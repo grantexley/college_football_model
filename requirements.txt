@@ -1,2 +1,5 @@
 cfbd
+tensorflow
 pandas
+matplotlib
+scikit-learn

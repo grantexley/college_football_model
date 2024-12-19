@@ -5,6 +5,7 @@ from cfbd.rest import ApiException
 from pprint import pprint
 import os
 import pandas as pd
+import sys
 
 def flatten_dict(d, parent_key='', sep='_'):
     items = []
@@ -94,64 +95,66 @@ def save_df(games, output_file, debug):
     
     with open('debug.txt', 'w') as f:
         print(debug, file=f)
-        
-    exit()
     
     
 def main():
-    YEAR=2023
-    
     config = cfbd.Configuration()
     config.api_key['Authorization'] = os.environ['CFBD_API_KEY']
     client = cfbd.ApiClient(config)
     
-    games = []
     seen_games = set()
+    years = [int(x) for x in sys.argv[1:]]
+    print(years)
     i = 0
     try:
-        teams = get_team_names(client, YEAR)
-        for team in teams:
-            for week in range(1, 16):
-                print(f'Processing game {i}')
-                
-                game_info = get_game_info(client, {'team': team, 'week': week, 'year': YEAR, 'season_type': 'regular'})
-                
-                if not game_info: continue  
-                
-                if game_info['home_team'] not in teams or game_info['away_team'] not in teams: continue
-                
-                if (game_info['home_team'], game_info['away_team']) in seen_games:
-                    continue
-                else:
-                    seen_games.add((game_info['home_team'], game_info['away_team']))
+        for year in years:
+            games = []
+            teams = get_team_names(client, year)
+            for team in teams:
+                for week in range(2, 16):
+                    print(f'Processing game {i}')
+                    
+                    game_info = get_game_info(client, {'team': team, 'week': week, 'year': year, 'season_type': 'regular'})
+                    
+                    if not game_info: continue  
+                    
+                    if game_info['home_team'] not in teams or game_info['away_team'] not in teams: continue
+                    
+                    if (game_info['home_team'], game_info['away_team']) in seen_games:
+                        continue
+                    else:
+                        seen_games.add((game_info['home_team'], game_info['away_team']))
+                        
+                        
+                    ### Per Game Data Processing ### 
+                    
+                    home_stats = get_season_stats(client, {'year': year, 'team': game_info['home_team'], 'exclude_garbage_time': True, 'start_week': 1, 'end_week': week})
+                    if not home_stats: 
+                        print(f'no response for game {i} in home_stats')
+                        continue
+                    home_stats = add_prefix_to_keys(home_stats, 'home_')
                     
                     
-                ### Per Game Data Processing ### 
-                
-                home_stats = get_season_stats(client, {'year': YEAR, 'team': game_info['home_team'], 'exclude_garbage_time': True, 'start_week': 1, 'end_week': week})
-                if not home_stats: 
-                    print(f'no response for game {i} in home_stats')
-                    continue
-                home_stats = add_prefix_to_keys(home_stats, 'home_')
-                
-                
-                away_stats = get_season_stats(client, {'year': YEAR, 'team': game_info['away_team'], 'exclude_garbage_time': True, 'start_week': 1, 'end_week': week})
-                if not away_stats: 
-                    print(f'no response for game {i} in away_stats')
-                    continue
-                away_stats = add_prefix_to_keys(away_stats, 'away_')
-                
-                
-                game_data = home_stats | away_stats | game_info
-                games.append(game_data)
-                i += 1
-                # return # uncomment to debug with only first game 
+                    away_stats = get_season_stats(client, {'year': year, 'team': game_info['away_team'], 'exclude_garbage_time': True, 'start_week': 1, 'end_week': week})
+                    if not away_stats: 
+                        print(f'no response for game {i} in away_stats')
+                        continue
+                    away_stats = add_prefix_to_keys(away_stats, 'away_')
+                    
+                    
+                    game_data = home_stats | away_stats | game_info
+                    games.append(game_data)
+                    i += 1
+                    # return # uncomment to debug with only first game 
+            save_df(games, "cfp_data_" + str(year), {})
+        
     except Exception as e:
-        save_df(games, 'games_data.csv', {'team': team, 'week': week, 'exception': e})
-        
-    save_df(games, 'games_data.csv',  {'none', 'none'})
-            
-        
+        save_df(games, 'games_data.csv', {'year': year, 'team': team, 'week': week, 'exception': e})
+        raise e
+    
+    print("EXITED WITHOUT ERROR")
+    
+    
 """
 Ideas for move data:
 - PPA numbers
